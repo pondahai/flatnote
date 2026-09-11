@@ -42,7 +42,7 @@ HTML 同時是「資料」和「呈現」。筆記存出去以後，不需要這
 
 ## 關於名字
 
-這個專案從 2019 年起就叫 **wripix** —— write + pixel，寫字跟畫圖在同一張紙上，
+這個專案從 2019 年起就叫 **wripix** —— **wri**te on **pix**ture，在圖片上寫字，
 正好是這個編輯器在做的事（舊的部署還留在 `wripix.xyz`）。
 
 中間一度想改名叫 flatnote，最後還是留在 wripix：repo、GitHub Pages 網址、
