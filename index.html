@@ -62,26 +62,28 @@
   .fig{margin:8px 0;position:relative;line-height:0;max-width:100%}
   .fig svg{width:100%;height:auto;display:block;background:#fff}
   .fig.active svg{outline:2px solid var(--accent);outline-offset:2px;cursor:crosshair}
-  .fig:not(.active):hover svg{outline:2px dashed #c9b0a0;outline-offset:2px;cursor:pointer}
+  .fig:not(.active).hot svg{outline:2px dashed #c9b0a0;outline-offset:2px;cursor:pointer}
   .fig.active .anno > *{cursor:move}
 
   /* 拖曳整張圖用的握把 */
   .fig .grip{
     position:absolute;top:0;left:-28px;width:24px;height:28px;
-    display:none;align-items:center;justify-content:center;
+    display:flex;align-items:center;justify-content:center;
     color:#a87a5a;cursor:grab;font-size:16px;line-height:1;
     border-radius:5px;background:rgba(0,0,0,.04);
     user-select:none;touch-action:none;
+    opacity:0;pointer-events:none;transition:opacity .18s ease;
   }
-  .fig:hover .grip,.fig.active .grip{display:flex}
+  .fig.hot .grip,.fig.active .grip{opacity:1;pointer-events:auto}
   .fig .grip:active{cursor:grabbing;background:rgba(0,0,0,.12)}
   .fig .rsz{
     position:absolute;right:-5px;bottom:-5px;width:14px;height:14px;
     background:var(--accent);border:2px solid #fff;border-radius:3px;
     box-shadow:0 1px 4px rgba(0,0,0,.4);
-    cursor:nwse-resize;display:none;touch-action:none;
+    cursor:nwse-resize;display:block;touch-action:none;
+    opacity:0;pointer-events:none;transition:opacity .18s ease;
   }
-  .fig:hover .rsz,.fig.active .rsz{display:block}
+  .fig.hot .rsz,.fig.active .rsz{opacity:1;pointer-events:auto}
   .fig.resizing{user-select:none}
   .fig.center,.fig.align-center{margin-left:auto;margin-right:auto}
   .fig.align-right{margin-left:auto;margin-right:0}
@@ -667,6 +669,39 @@ function upgradeImg(img){
    把整張圖拖到文件的別處
    拖曳時顯示一條落點線，靠近上下邊緣會自動捲動
    ============================================================ */
+/* 握把的顯示範圍比圖片大一圈（握把本身在圖片外面），
+   而且滑鼠離開之後要等一下才收起來，免得還沒碰到就不見了 */
+const HOT_PAD = 40, HOT_DELAY = 800;
+let hotFig = null, hotTimer = null;
+
+function inHotZone(f, x, y){
+  const r = f.getBoundingClientRect();
+  return x >= r.left - HOT_PAD && x <= r.right + HOT_PAD
+      && y >= r.top  - HOT_PAD/2 && y <= r.bottom + HOT_PAD/2;
+}
+function setHot(f){
+  clearTimeout(hotTimer);
+  if(hotFig === f) return;
+  if(hotFig) hotFig.classList.remove('hot');
+  hotFig = f;
+  if(f) f.classList.add('hot');
+}
+function coolLater(){
+  clearTimeout(hotTimer);
+  hotTimer = setTimeout(()=>{
+    if(hotFig && !figDrag && !figResize){ hotFig.classList.remove('hot'); hotFig = null; }
+  }, HOT_DELAY);
+}
+document.addEventListener('pointermove', e=>{
+  if(figDrag || figResize) return;      // 正在拖或改大小時不收
+  let found = null;
+  for(const f of paper.querySelectorAll('.fig')){
+    if(inHotZone(f, e.clientX, e.clientY)){ found = f; break; }
+  }
+  if(found) setHot(found);
+  else if(hotFig) coolLater();
+});
+
 const dropline = document.getElementById('dropline');
 const wrap     = document.getElementById('paperwrap');
 let figDrag = null;
@@ -907,7 +942,7 @@ function buildDocument(){
     n.removeAttribute('data-sel'); n.removeAttribute('style');
   });
   body.querySelectorAll('.grip,.rsz').forEach(n=>n.remove());   // 握把是編輯器的，不是筆記的
-  body.querySelectorAll('.fig').forEach(n=>n.classList.remove('active','dragging'));
+  body.querySelectorAll('.fig').forEach(n=>n.classList.remove('active','dragging','hot','resizing'));
   const inner = body.innerHTML;
   return `<!DOCTYPE html>
 <html lang="zh-Hant">
