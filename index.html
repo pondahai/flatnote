@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notebook</title>
+<style>
+  :root{
+    --bar:#220000;
+    --bar-fg:#e8d5d5;
+    --accent:#ff9b3d;
+    --rule:#c9d8e4;
+    --margin-line:#e0a0a0;
+    --paper:#fffef9;
+    --ink:#2a2a2a;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;
+    display:flex;
+    flex-direction:column;
+    background:#3a1212;
+    color:var(--ink);
+    font-family:-apple-system,"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;
+  }
+
+  /* ---------- �紙 ---------- */
+  #paperwrap{flex:1;overflow:auto;padding:24px 12px 60px;display:flex;justify-content:center}
+  #paper{
+    width:100%;
+    max-width:820px;
+    min-height:100%;
+    background:var(--paper);
+    padding:40px 44px 80px 64px;
+    outline:none;
+    box-shadow:0 4px 24px rgba(0,0,0,.4);
+    line-height:32px;
+    font-size:17px;
+    word-wrap:break-word;
+  }
+  /* 口 空白 */
+  #paper.style-plain{background-image:none}
+  /* 三 橫線 */
+  #paper.style-ruled{
+    background-image:
+      linear-gradient(to right,transparent 51px,var(--margin-line) 51px,var(--margin-line) 52px,transparent 52px),
+      repeating-linear-gradient(to bottom,transparent 0,transparent 31px,var(--rule) 31px,var(--rule) 32px);
+    background-attachment:local;
+  }
+  /* 回 方格 */
+  #paper.style-grid{
+    background-image:
+      repeating-linear-gradient(to right,transparent 0,transparent 31px,var(--rule) 31px,var(--rule) 32px),
+      repeating-linear-gradient(to bottom,transparent 0,transparent 31px,var(--rule) 31px,var(--rule) 32px);
+    background-attachment:local;
+  }
+  #paper:empty:before{content:attr(data-placeholder);color:#b8b0a8;font-style:italic}
+  #paper img{max-width:100%;height:auto}
+  #paper h1{font-size:30px;line-height:64px;margin:32px 0}
+  #paper h2{font-size:24px;line-height:32px;margin:32px 0}
+  #paper h3{font-size:19px;line-height:32px;margin:32px 0}
+  #paper p,#paper div{margin:0}
+  #paper blockquote{border-left:3px solid var(--accent);margin:0;padding-left:16px;color:#5a5a5a}
+  #paper pre{background:#f0ece4;padding:12px 16px;line-height:24px;overflow-x:auto;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:14px}
+  #paper a{color:#0b6bbf}
+  #paper table{border-collapse:collapse}
+  #paper td,#paper th{border:1px solid #ccc;padding:4px 8px}
+
+  /* ---------- 工具列 ---------- */
+  #bar{
+    background:var(--bar);
+    color:var(--bar-fg);
+    padding:8px 10px;
+    display:flex;
+    flex-wrap:wrap;
+    gap:14px;
+    align-items:center;
+    border-top:1px solid #4a1a1a;
+  }
+  .grp{display:flex;gap:2px;align-items:center}
+  .grp.sep{border-left:1px solid #5a2020;padding-left:14px}
+  button.t{
+    background:transparent;
+    border:1px solid transparent;
+    color:var(--bar-fg);
+    font-size:17px;
+    line-height:1;
+    min-width:34px;
+    height:32px;
+    padding:0 7px;
+    cursor:pointer;
+    border-radius:5px;
+    font-family:inherit;
+  }
+  button.t:hover{background:#3d1111;border-color:#6a2a2a}
+  button.t:active{transform:translateY(1px)}
+  button.t[aria-pressed="true"],button.t.on{background:#5a2020;border-color:#8a3a3a}
+  button.t:disabled{opacity:.3;cursor:default}
+  button.t b{font-weight:800}
+  button.t i{font-style:italic;font-family:Georgia,serif}
+  button.t u{text-decoration:underline}
+  #status{
+    margin-left:auto;
+    font-size:12px;
+    color:#a98888;
+    display:flex;
+    align-items:center;
+    gap:8px;
+    max-width:100%;
+  }
+  #fname{color:var(--accent);font-weight:600;max-width:38vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #dot{width:7px;height:7px;border-radius:50%;background:#6a5a5a;flex:none}
+  #dot.dirty{background:var(--accent)}
+  #dot.saved{background:#4caf50}
+
+  #warn{
+    background:#4a2a00;color:#ffd9a0;font-size:13px;padding:8px 12px;
+    display:none;align-items:center;gap:10px;
+  }
+  #warn.show{display:flex}
+  #warn button{background:none;border:1px solid #9a7a3a;color:#ffd9a0;border-radius:4px;cursor:pointer;padding:2px 8px;font-size:12px}
+
+  @media (max-width:640px){
+    #paper{padding:24px 18px 60px 34px}
+    #bar{gap:8px}
+    .grp.sep{padding-left:8px}
+    #status{width:100%;margin-left:0;order:99}
+    #fname{max-width:60vw}
+  }
+</style>
+</head>
+<body>
+
+<div id="warn">
+  <span id="warnmsg"></span>
+  <button onclick="document.getElementById('warn').classList.remove('show')">知道了</button>
+</div>
+
+<div id="paperwrap">
+  <div id="paper" class="style-ruled" contenteditable="true" spellcheck="false"
+       data-placeholder="在這裡開始寫…"></div>
+</div>
+
+<div id="bar">
+  <div class="grp">
+    <button class="t" id="b-new"  title="新檔案">🗒</button>
+    <button class="t" id="b-open" title="開啟檔案">📂</button>
+    <button class="t" id="b-save" title="儲存 (Ctrl+S)">💾</button>
+    <button class="t" id="b-saveas" title="另存新檔">💾⁺</button>
+  </div>
+
+  <div class="grp sep">
+    <button class="t" data-cmd="bold"><b>B</b></button>
+    <button class="t" data-cmd="italic"><i>I</i></button>
+    <button class="t" data-cmd="underline"><u>U</u></button>
+    <button class="t" data-cmd="strikeThrough"><s>S</s></button>
+  </div>
+
+  <div class="grp sep">
+    <button class="t" data-block="h1" title="標題1">字</button>
+    <button class="t" data-block="h2" title="標題2" style="font-size:14px">字</button>
+    <button class="t" data-block="h3" title="標題3" style="font-size:12px">字</button>
+    <button class="t" data-block="p"  title="內文">¶</button>
+    <button class="t" data-block="blockquote" title="引用">❝</button>
+    <button class="t" data-block="pre" title="程式碼" style="font-size:12px">0101</button>
+  </div>
+
+  <div class="grp sep">
+    <button class="t" data-cmd="insertUnorderedList" title="項目符號">•—</button>
+    <button class="t" data-cmd="insertOrderedList" title="編號">1—</button>
+    <button class="t" data-cmd="justifyLeft" title="靠左">⇤</button>
+    <button class="t" data-cmd="justifyCenter" title="置中">|</button>
+    <button class="t" data-cmd="justifyRight" title="靠右">⇥</button>
+  </div>
+
+  <div class="grp sep">
+    <button class="t" id="b-link" title="插入連結">🔗</button>
+    <button class="t" id="b-img"  title="插入圖片">🖼</button>
+    <button class="t" data-cmd="removeFormat" title="清除格式">🧹</button>
+  </div>
+
+  <div class="grp sep">
+    <button class="t" data-paper="plain" title="空白">口</button>
+    <button class="t on" data-paper="ruled" title="橫線">三</button>
+    <button class="t" data-paper="grid"  title="方格">回</button>
+  </div>
+
+  <div id="status">
+    <span id="dot"></span><span id="fname">未命名</span><span id="msg"></span>
+  </div>
+</div>
+
+<input type="file" id="filepicker" accept=".html,.htm" hidden>
+<input type="file" id="imgpicker" accept="image/*" hidden>
+
+<script>
+/* ============================================================
+   離線筆記本 — 單一 HTML 檔，無後端、無外部相依
+   儲存格式：一份完整、可獨立開啟的 HTML 文件
+   ============================================================ */
+
+const paper   = document.getElementById('paper');
+const dot     = document.getElementById('dot');
+const fnameEl = document.getElementById('fname');
+const msgEl   = document.getElementById('msg');
+
+const HAS_FS = 'showOpenFilePicker' in window;   // Chrome / Edge
+let handle    = null;      // FileSystemFileHandle
+let fileName  = '未命名';
+let dirty     = false;
+let paperStyle= 'ruled';
+let autosaveTimer = null;
+
+/* ---------- 狀態列 ---------- */
+function setDirty(v){
+  dirty = v;
+  dot.className = v ? 'dirty' : (handle||lastSavedOnce ? 'saved' : '');
+}
+let lastSavedOnce = false;
+function flash(t,ms=2200){
+  msgEl.textContent = t;
+  clearTimeout(flash._t);
+  flash._t = setTimeout(()=>msgEl.textContent='', ms);
+}
+function warn(t){
+  document.getElementById('warnmsg').textContent = t;
+  document.getElementById('warn').classList.add('show');
+}
+
+/* ---------- 編輯指令 ---------- */
+document.querySelectorAll('button.t[data-cmd]').forEach(b=>{
+  b.addEventListener('mousedown', e=>e.preventDefault());
+  b.addEventListener('click', ()=>{
+    document.execCommand(b.dataset.cmd,false,null);
+    paper.focus(); touch(); syncToolbar();
+  });
+});
+document.querySelectorAll('button.t[data-block]').forEach(b=>{
+  b.addEventListener('mousedown', e=>e.preventDefault());
+  b.addEventListener('click', ()=>{
+    document.execCommand('formatBlock',false,'<'+b.dataset.block+'>');
+    paper.focus(); touch(); syncToolbar();
+  });
+});
+document.querySelectorAll('button.t[data-paper]').forEach(b=>{
+  b.addEventListener('click', ()=>{
+    paperStyle = b.dataset.paper;
+    paper.className = 'style-'+paperStyle;
+    document.querySelectorAll('button.t[data-paper]').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on');
+    touch();
+  });
+});
+
+function syncToolbar(){
+  ['bold','italic','underline','strikeThrough'].forEach(c=>{
+    const b=document.querySelector(`button.t[data-cmd="${c}"]`);
+    if(b) b.setAttribute('aria-pressed', document.queryCommandState(c));
+  });
+}
+document.addEventListener('selectionchange', ()=>{
+  if(document.activeElement===paper) syncToolbar();
+});
+
+/* ---------- 連結 / 圖片 ---------- */
+document.getElementById('b-link').addEventListener('mousedown',e=>e.preventDefault());
+document.getElementById('b-link').addEventListener('click', ()=>{
+  const sel = window.getSelection();
+  if(!sel.rangeCount || sel.isCollapsed){ flash('先選取要變成連結的文字'); return; }
+  const url = prompt('連結網址：','https://');
+  if(url){ document.execCommand('createLink',false,url); touch(); }
+  paper.focus();
+});
+
+document.getElementById('b-img').addEventListener('click', ()=>
+  document.getElementById('imgpicker').click());
+document.getElementById('imgpicker').addEventListener('change', async e=>{
+  const f = e.target.files[0];
+  if(f) await insertImageFile(f);
+  e.target.value='';
+});
+
+/* 圖片一律轉成 data URI 內嵌 —— 保證單檔可攜 */
+function insertImageFile(file){
+  return new Promise(res=>{
+    const r = new FileReader();
+    r.onload = ()=>{
+      paper.focus();
+      document.execCommand('insertHTML',false,
+        `<img src="${r.result}" alt="${file.name.replace(/"/g,'')}">`);
+      touch();
+      if(file.size > 1.5*1024*1024)
+        flash('圖片較大，檔案會變肥（'+(file.size/1048576).toFixed(1)+'MB）',4000);
+      res();
+    };
+    r.readAsDataURL(file);
+  });
+}
+
+/* 貼上：圖片內嵌，文字去掉外來樣式 */
+paper.addEventListener('paste', async e=>{
+  const items = [...(e.clipboardData?.items||[])];
+  const img = items.find(i=>i.type.startsWith('image/'));
+  if(img){
+    e.preventDefault();
+    await insertImageFile(img.getAsFile());
+    return;
+  }
+  e.preventDefault();
+  const html = e.clipboardData.getData('text/html');
+  const text = e.clipboardData.getData('text/plain');
+  if(html){
+    const d = document.createElement('div');
+    d.innerHTML = html;
+    d.querySelectorAll('*').forEach(n=>{
+      n.removeAttribute('style'); n.removeAttribute('class'); n.removeAttribute('id');
+      if(/^(SCRIPT|STYLE|META|LINK)$/.test(n.tagName)) n.remove();
+    });
+    document.execCommand('insertHTML',false,d.innerHTML);
+  }else{
+    document.execCommand('insertText',false,text);
+  }
+  touch();
+});
+
+/* 拖曳圖片進來 */
+paper.addEventListener('dragover', e=>e.preventDefault());
+paper.addEventListener('drop', async e=>{
+  const f=[...(e.dataTransfer?.files||[])].find(x=>x.type.startsWith('image/'));
+  if(f){ e.preventDefault(); await insertImageFile(f); }
+});
+
+paper.addEventListener('input', touch);
+function touch(){
+  setDirty(true);
+  scheduleAutosave();
+}
+
+/* ============================================================
+   存檔格式
+   ============================================================ */
+const MARK_OPEN  = '<!--dahai-notebook v1-->';
+
+function buildDocument(){
+  return `<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHtml(fileName.replace(/\.html?$/i,''))}</title>
+${MARK_OPEN}
+<meta name="dahai-paper" content="${paperStyle}">
+<style>
+body{margin:0;background:#e8e6e0;font-family:-apple-system,"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;color:#2a2a2a}
+#note{max-width:820px;margin:0 auto;background:#fffef9;padding:40px 44px 80px 64px;
+  line-height:32px;font-size:17px;min-height:100vh;box-shadow:0 0 24px rgba(0,0,0,.15);word-wrap:break-word}
+#note img{max-width:100%;height:auto}
+#note h1{font-size:30px;line-height:64px;margin:32px 0}
+#note h2{font-size:24px;line-height:32px;margin:32px 0}
+#note h3{font-size:19px;line-height:32px;margin:32px 0}
+#note p,#note div{margin:0}
+#note blockquote{border-left:3px solid #ff9b3d;margin:0;padding-left:16px;color:#5a5a5a}
+#note pre{background:#f0ece4;padding:12px 16px;line-height:24px;overflow-x:auto;
+  font-family:ui-monospace,Menlo,Consolas,monospace;font-size:14px}
+#note a{color:#0b6bbf}
+#note table{border-collapse:collapse}
+#note td,#note th{border:1px solid #ccc;padding:4px 8px}
+@media(max-width:640px){#note{padding:24px 18px 60px 34px}}
+</style>
+</head>
+<body>
+<div id="note">
+${paper.innerHTML}
+</div>
+</body>
+</html>`;
+}
+
+function escapeHtml(s){
+  return s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+
+/* 讀回來：認得自己存的檔，也盡量吃得下別人的 HTML */
+function parseDocument(text){
+  const doc = new DOMParser().parseFromString(text,'text/html');
+  const note = doc.getElementById('note');
+  const style = doc.querySelector('meta[name="dahai-paper"]')?.content;
+  return {
+    html: note ? note.innerHTML : (doc.body ? doc.body.innerHTML : text),
+    paper: style || 'ruled'
+  };
+}
+
+function applyLoaded(o){
+  paper.innerHTML = o.html.trim();
+  paperStyle = o.paper;
+  paper.className = 'style-'+paperStyle;
+  document.querySelectorAll('button.t[data-paper]').forEach(x=>
+    x.classList.toggle('on', x.dataset.paper===paperStyle));
+}
+
+/* ============================================================
+   檔案存取 — File System Access API（有就用），否則退回下載/上傳
+   ============================================================ */
+
+document.getElementById('b-new').addEventListener('click', async ()=>{
+  if(dirty && !confirm('目前的修改還沒存檔，確定要開新的嗎？')) return;
+  handle=null; fileName='未命名'; lastSavedOnce=false;
+  paper.innerHTML=''; fnameEl.textContent=fileName;
+  setDirty(false); await forgetHandle(); paper.focus();
+});
+
+document.getElementById('b-open').addEventListener('click', openFile);
+document.getElementById('b-save').addEventListener('click', ()=>save(false));
+document.getElementById('b-saveas').addEventListener('click', ()=>save(true));
+
+async function openFile(){
+  if(dirty && !confirm('目前的修改還沒存檔，確定要開啟別的檔案嗎？')) return;
+  if(HAS_FS){
+    try{
+      const [h] = await window.showOpenFilePicker({
+        types:[{description:'筆記 (HTML)',accept:{'text/html':['.html','.htm']}}]
+      });
+      handle = h;
+      const f = await h.getFile();
+      applyLoaded(parseDocument(await f.text()));
+      fileName = f.name; fnameEl.textContent = fileName;
+      lastSavedOnce = true; setDirty(false);
+      await rememberHandle(h);
+      flash('已開啟');
+    }catch(err){ if(err.name!=='AbortError') flash('開啟失敗：'+err.message,4000); }
+  }else{
+    document.getElementById('filepicker').click();
+  }
+}
+
+document.getElementById('filepicker').addEventListener('change', async e=>{
+  const f = e.target.files[0]; if(!f) return;
+  applyLoaded(parseDocument(await f.text()));
+  fileName = f.name; fnameEl.textContent = fileName;
+  lastSavedOnce = true; setDirty(false);
+  flash('已開啟（此瀏覽器只能另存新檔）',4000);
+  e.target.value='';
+});
+
+async function save(forceNew){
+  const data = buildDocument();
+
+  if(HAS_FS){
+    try{
+      if(forceNew || !handle){
+        handle = await window.showSaveFilePicker({
+          suggestedName: fileName==='未命名' ? suggestName() : fileName,
+          types:[{description:'筆記 (HTML)',accept:{'text/html':['.html']}}]
+        });
+        fileName = handle.name;
+        fnameEl.textContent = fileName;
+        await rememberHandle(handle);
+      }
+      const w = await handle.createWritable();
+      await w.write(data);
+      await w.close();
+      lastSavedOnce = true; setDirty(false);
+      flash('已儲存 '+new Date().toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit',second:'2-digit'}));
+    }catch(err){
+      if(err.name==='AbortError') return;
+      flash('儲存失敗：'+err.message,5000);
+    }
+  }else{
+    // 退路：下載一份
+    const blob = new Blob([data],{type:'text/html;charset=utf-8'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = fileName==='未命名' ? suggestName() : fileName;
+    a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+    lastSavedOnce = true; setDirty(false);
+    flash('已下載');
+  }
+}
+
+function suggestName(){
+  const t = paper.textContent.trim().split('\n')[0].slice(0,24).replace(/[\\/:*?"<>|]/g,'');
+  const d = new Date().toISOString().slice(0,10);
+  return (t ? t+'-' : 'note-') + d + '.html';
+}
+
+/* Ctrl/Cmd + S */
+document.addEventListener('keydown', e=>{
+  if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='s'){ e.preventDefault(); save(false); }
+});
+
+/* 自動存檔：已經有檔案代號時，停筆 2 秒後靜靜寫回去 */
+function scheduleAutosave(){
+  if(!HAS_FS || !handle) return;
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(()=>{ if(dirty) save(false); }, 2000);
+}
+
+window.addEventListener('beforeunload', e=>{
+  if(dirty){ e.preventDefault(); e.returnValue=''; }
+});
+
+/* ============================================================
+   記住上次開的檔案（IndexedDB 存 file handle）
+   ============================================================ */
+function idb(){
+  return new Promise((res,rej)=>{
+    const r = indexedDB.open('dahai-notebook',1);
+    r.onupgradeneeded = ()=>r.result.createObjectStore('kv');
+    r.onsuccess = ()=>res(r.result);
+    r.onerror = ()=>rej(r.error);
+  });
+}
+async function rememberHandle(h){
+  try{
+    const db = await idb();
+    db.transaction('kv','readwrite').objectStore('kv').put(h,'last');
+  }catch(e){}
+}
+async function forgetHandle(){
+  try{
+    const db = await idb();
+    db.transaction('kv','readwrite').objectStore('kv').delete('last');
+  }catch(e){}
+}
+async function loadLastHandle(){
+  try{
+    const db = await idb();
+    return await new Promise(res=>{
+      const r = db.transaction('kv').objectStore('kv').get('last');
+      r.onsuccess = ()=>res(r.result||null);
+      r.onerror   = ()=>res(null);
+    });
+  }catch(e){ return null; }
+}
+
+/* ============================================================
+   啟動
+   ============================================================ */
+(async function init(){
+  if(location.protocol==='file:'){
+    warn('這個頁面是用 file:// 開的，瀏覽器會停用直接存檔功能。請改用本地伺服器開啟（見 README）。');
+  }else if(!HAS_FS){
+    warn('這個瀏覽器不支援直接存回原檔（目前只有 Chrome / Edge 支援）。儲存會變成下載一份新檔案。');
+  }
+
+  const h = await loadLastHandle();
+  if(h){
+    try{
+      const perm = await h.queryPermission({mode:'readwrite'});
+      if(perm==='granted'){
+        handle = h;
+        const f = await h.getFile();
+        applyLoaded(parseDocument(await f.text()));
+        fileName=f.name; fnameEl.textContent=fileName;
+        lastSavedOnce=true; setDirty(false);
+        flash('已接續上次的檔案');
+      }else{
+        fnameEl.textContent = h.name + '（點 📂 重新授權）';
+        document.getElementById('b-open').onclick = async ()=>{
+          const p = await h.requestPermission({mode:'readwrite'});
+          if(p==='granted'){
+            handle=h;
+            const f=await h.getFile();
+            applyLoaded(parseDocument(await f.text()));
+            fileName=f.name; fnameEl.textContent=fileName;
+            lastSavedOnce=true; setDirty(false); flash('已接續上次的檔案');
+            document.getElementById('b-open').onclick = openFile;
+          }else{ openFile(); }
+        };
+      }
+    }catch(e){ await forgetHandle(); }
+  }
+  paper.focus();
+})();
+</script>
+</body>
+</html>
