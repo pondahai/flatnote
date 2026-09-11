@@ -92,6 +92,20 @@
   }
   #dropline.show{display:block}
   @media (max-width:640px){ .fig .grip{left:-26px;background:rgba(0,0,0,.08)} }
+
+  /* 列印：只留稿紙的內容，工具列與控制項都不上紙 */
+  @media print{
+    body{background:#fff;display:block;height:auto}
+    #bar,#annobar,#dropline,#warn,.fig .grip,.fig .rsz{display:none !important}
+    #paperwrap{display:block;overflow:visible;padding:0;height:auto}
+    #paper{
+      max-width:none;width:auto;min-height:0;padding:0;
+      box-shadow:none;background:#fff;background-image:none;
+      font-size:12pt;line-height:1.6;
+    }
+    #paper .fig{break-inside:avoid;page-break-inside:avoid}
+    #paper h1,#paper h2,#paper h3{break-after:avoid;page-break-after:avoid}
+  }
   #annobar{
     position:fixed;z-index:50;display:none;gap:2px;align-items:center;
     background:var(--bar);border:1px solid #6a2a2a;border-radius:8px;
@@ -923,6 +937,14 @@ body{margin:0;background:#e8e6e0;font-family:-apple-system,"Noto Sans TC","PingF
 #note .fig.center,#note .fig.align-center{margin-left:auto;margin-right:auto}
 #note .fig.align-right{margin-left:auto;margin-right:0}
 @media(max-width:640px){#note{padding:24px 18px 60px 34px}}
+@media print{
+  body{background:#fff}
+  /* min-height:100vh 是給螢幕看的，列印時會多撐出一整張紙 */
+  #note{max-width:none;min-height:0;margin:0;padding:0;box-shadow:none;background:#fff}
+  #note .fig{break-inside:avoid;page-break-inside:avoid}
+  #note h1,#note h2,#note h3{break-after:avoid;page-break-after:avoid}
+  #note a{color:#000}
+}
 </style>
 </head>
 <body>
