@@ -2,7 +2,7 @@
 
 A WYSIWYG HTML notebook. Your note is just a file — no backend, no database, no API.
 
-**線上版：** https://pondahai.github.io/flatnote/
+**線上版：** https://pondahai.github.io/wripix/
 
 ---
 
@@ -42,8 +42,8 @@ HTML 同時是「資料」和「呈現」。筆記存出去以後，不需要這
 
 ## 關於名字
 
-這個專案原本取名叫 **wripix**（舊的部署還留在 `wripix.xyz`，程式碸裡也還有
-`addWripixShare()` 之類的痕跡）。
+這個專案原本取名叫 **wripix**（舊的部署還留在 `wripix.xyz`，repo 和 GitHub Pages
+的網址目前也還是 `wripix`）。
 
 後來改叫 **flatnote**。「flat」在資料的世界裡指「沒有資料庫、沒有巢狀結構，
 就是一份攤平的檔案」，正好是這個專案的核心主張；同時它也是「平放的一張紙」。
@@ -59,7 +59,7 @@ HTML 同時是「資料」和「呈現」。筆記存出去以後，不需要這
 
 **檔案**
 開新檔、開啟、儲存、另存新檔。`Ctrl+S` 存檔。
-存過一次之後會自動存檔 —— 停筆兩秒靜靜寫回同一個檔案，狀態點由橘轉綠。
+存過一次之後，狀態列會顯示「未儲存 / 已儲存」，改了什麼、存了沒有一眼就知道。
 關掉瀏覽器再打開，會記得上次那個檔案，直接接著編輯。
 
 **圖片與 SVG 註解**
@@ -84,7 +84,7 @@ HTML 同時是「資料」和「呈現」。筆記存出去以後，不需要這
 
 ## 怎麼跑
 
-**最簡單：** 直接開 https://pondahai.github.io/flatnote/
+**最簡單：** 直接開 https://pondahai.github.io/wripix/
 
 GitHub Pages 全站強制 https，存檔功能可以直接用，不需要跑任何伺服器。
 
@@ -110,7 +110,7 @@ Firefox / Safari 會自動退回「下載／上傳」模式，編輯功能完全
 
 ## 技術
 
-單一 HTML 檔，約 31KB，**零外部相依、零網路呼叫**。把網路線拔掉照常運作。
+單一 HTML 檔，約 46KB，**零外部相依、零網路呼叫**。把網路線拔掉照常運作。
 
 沒有 jQuery、沒有 medium-editor、沒有 svg.js —— 2019 年那版用的函式庫全部拿掉了。
 
@@ -130,7 +130,7 @@ Firefox / Safari 會自動退回「下載／上傳」模式，編輯功能完全
 
 ## 路線圖
 
-- [x] 離線版：編輯、存檔、自動存檔
+- [x] 離線版：編輯、存檔
 - [x] SVG 圖片註解
 - [ ] 手機支援（讀已經可以，存檔需要另一條路）
 - [ ] Google Drive 直接同步（給沒裝桌面版、或在手機上的情況）
