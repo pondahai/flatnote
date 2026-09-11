@@ -83,7 +83,8 @@
   }
   .fig:hover .rsz,.fig.active .rsz{display:block}
   .fig.resizing{user-select:none}
-  .fig.center{margin-left:auto;margin-right:auto}
+  .fig.center,.fig.align-center{margin-left:auto;margin-right:auto}
+  .fig.align-right{margin-left:auto;margin-right:0}
   .fig.dragging{opacity:.4}
   #dropline{
     position:fixed;height:3px;border-radius:2px;background:var(--accent);
@@ -263,7 +264,6 @@
   <button id="anno-thin"  title="細">·</button>
   <button id="anno-thick" title="粗">●</button>
   <span class="divider"></span>
-  <button id="fig-align" title="靠左 / 置中">⇔</button>
   <span class="divider"></span>
   <button id="anno-undo" title="復原上一筆">↶</button>
   <button id="anno-clear" title="清空這張圖的註解">⌫</button>
@@ -311,6 +311,8 @@ function warn(t){
 document.querySelectorAll('button.t[data-cmd]').forEach(b=>{
   b.addEventListener('mousedown', e=>e.preventDefault());
   b.addEventListener('click', ()=>{
+    // 選取圖片時，⇤ | ⇥ 改成對齊那張圖
+    if(figure && b.dataset.cmd.startsWith('justify')){ setFigAlign(b.dataset.cmd); return; }
     document.execCommand(b.dataset.cmd,false,null);
     paper.focus(); touch(); syncToolbar();
   });
@@ -478,6 +480,7 @@ function enterFigure(f){
   bar.classList.add('show');
   placeBar();
   syncBar();
+  syncJustify();
 }
 function exitFigure(){
   if(!figure) return;
@@ -485,6 +488,7 @@ function exitFigure(){
   figure.classList.remove('active');
   figure = null;
   bar.classList.remove('show');
+  syncJustify();
 }
 function placeBar(){
   if(!figure) return;
@@ -528,13 +532,26 @@ document.getElementById('anno-clear').onclick = ()=>{
 };
 document.getElementById('anno-done').onclick  = exitFigure;
 
-/* ---------- 圖片在文件中的位置與大小 ---------- */
-document.getElementById('fig-align').onclick = ()=>{
+/* ---------- 圖片對齊：沿用文字工具列的 ⇤ | ⇥ ---------- */
+const FIG_ALIGN = {justifyLeft:'', justifyCenter:'align-center', justifyRight:'align-right'};
+
+function setFigAlign(cmd){
   if(!figure) return;
-  figure.classList.toggle('center');
-  flash(figure.classList.contains('center') ? '置中' : '靠左');
-  touch(); placeBar();
-};
+  figure.classList.remove('align-center','align-right','center');
+  if(FIG_ALIGN[cmd]) figure.classList.add(FIG_ALIGN[cmd]);
+  flash(cmd === 'justifyCenter' ? '圖片置中' : cmd === 'justifyRight' ? '圖片靠右' : '圖片靠左');
+  touch(); placeBar(); syncJustify();
+}
+
+/* 選取圖片時，讓那三顆按鈕顯示目前是哪一種對齊 */
+function syncJustify(){
+  const isC = figure && (figure.classList.contains('align-center') || figure.classList.contains('center'));
+  const isR = figure && figure.classList.contains('align-right');
+  const state = isC ? 'align-center' : (isR ? 'align-right' : '');
+  document.querySelectorAll('button.t[data-cmd^="justify"]').forEach(b=>{
+    b.classList.toggle('on', !!figure && FIG_ALIGN[b.dataset.cmd] === state);
+  });
+}
 
 /* 雙擊圖片 → 回復原尺寸與原比例 */
 paper.addEventListener('dblclick', e=>{
@@ -898,7 +915,8 @@ body{margin:0;background:#e8e6e0;font-family:-apple-system,"Noto Sans TC","PingF
 #note td,#note th{border:1px solid #ccc;padding:4px 8px}
 #note .fig{margin:8px 0;line-height:0;max-width:100%}
 #note .fig svg{width:100%;height:auto;display:block;background:#fff}
-#note .fig.center{margin-left:auto;margin-right:auto}
+#note .fig.center,#note .fig.align-center{margin-left:auto;margin-right:auto}
+#note .fig.align-right{margin-left:auto;margin-right:0}
 @media(max-width:640px){#note{padding:24px 18px 60px 34px}}
 </style>
 </head>
