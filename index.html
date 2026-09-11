@@ -63,7 +63,7 @@
   .fig svg{max-width:100%;height:auto;display:block;background:#fff}
   .fig.active svg{outline:2px solid var(--accent);outline-offset:2px;cursor:crosshair}
   .fig:not(.active):hover svg{outline:2px dashed #c9b0a0;outline-offset:2px;cursor:pointer}
-  .anno .sel{outline:none}
+  .fig.active .anno > *{cursor:move}
   #annobar{
     position:fixed;z-index:50;display:none;gap:2px;align-items:center;
     background:var(--bar);border:1px solid #6a2a2a;border-radius:8px;
@@ -233,6 +233,10 @@
   <span class="divider"></span>
   <button id="anno-thin"  title="細">·</button>
   <button id="anno-thick" title="粗">●</button>
+  <span class="divider"></span>
+  <button id="fig-up"   title="這張圖往前移">↑</button>
+  <button id="fig-down" title="這張圖往後移">↓</button>
+  <button id="fig-size" title="圖片大小">⤢</button>
   <span class="divider"></span>
   <button id="anno-undo" title="復原上一筆">↶</button>
   <button id="anno-clear" title="清空這張圖的註解">⌫</button>
@@ -413,6 +417,7 @@ let color    = '#e53935';
 let thick    = 1;         // 1 = 細, 2 = 粗
 let drawing  = null;      // 正在畫的元素
 let selected = null;      // 被選取的註解
+let dragging = null;      // 正在拖曳的既有註解
 
 const svgOf  = f => f.querySelector('svg');
 const annoOf = f => f.querySelector('g.anno');
@@ -494,6 +499,31 @@ document.getElementById('anno-clear').onclick = ()=>{
 };
 document.getElementById('anno-done').onclick  = exitFigure;
 
+/* ---------- 圖片在文件中的位置與大小 ---------- */
+document.getElementById('fig-up').onclick   = ()=>moveFigure(-1);
+document.getElementById('fig-down').onclick = ()=>moveFigure(1);
+document.getElementById('fig-size').onclick = ()=>cycleSize();
+
+function moveFigure(dir){
+  if(!figure) return;
+  const sib = dir < 0 ? figure.previousElementSibling : figure.nextElementSibling;
+  if(!sib){ flash(dir < 0 ? '已經在最前面' : '已經在最後面'); return; }
+  if(dir < 0) figure.parentNode.insertBefore(figure, sib);
+  else        figure.parentNode.insertBefore(sib, figure);
+  figure.scrollIntoView({block:'nearest'});
+  touch(); placeBar();
+}
+
+const SIZES = ['100%','75%','50%','35%'];
+function cycleSize(){
+  if(!figure) return;
+  const now = figure.style.width || '100%';
+  const next = SIZES[(SIZES.indexOf(now) + 1) % SIZES.length];
+  figure.style.width = next;
+  flash('圖片寬度 ' + next);
+  touch(); placeBar();
+}
+
 function syncBar(){
   bar.querySelectorAll('button[data-tool]').forEach(b=>
     b.classList.toggle('on', b.dataset.tool === tool));
@@ -529,6 +559,20 @@ document.addEventListener('keydown', e=>{
   if((e.key === 'Delete' || e.key === 'Backspace') && selected){
     e.preventDefault();
     selected.remove(); selected = null; touch();
+    return;
+  }
+  // 方向鍵微調選取中的註解
+  if(selected && figure && e.key.startsWith('Arrow')){
+    e.preventDefault();
+    const vb = svgOf(figure).viewBox.baseVal;
+    const step = (e.shiftKey ? 10 : 1) * Math.max(1, Math.round(Math.min(vb.width, vb.height)/200));
+    const t = getTranslate(selected);
+    if(e.key === 'ArrowLeft')  t.x -= step;
+    if(e.key === 'ArrowRight') t.x += step;
+    if(e.key === 'ArrowUp')    t.y -= step;
+    if(e.key === 'ArrowDown')  t.y += step;
+    selected.setAttribute('transform', `translate(${t.x} ${t.y})`);
+    touch();
   }
 });
 
@@ -563,7 +607,12 @@ paper.addEventListener('pointerdown', e=>{
 
   // 點到既有註解 → 選取它，不畫新的
   const hit = e.target.closest('g.anno > *');
-  if(hit){ select(hit); return; }
+  if(hit){
+    e.preventDefault();
+    select(hit);
+    dragging = {node:hit, start:toSvg(figure, e), base:getTranslate(hit)};
+    return;
+  }
   deselect();
 
   const p = toSvg(figure, e);
@@ -604,7 +653,21 @@ paper.addEventListener('pointerdown', e=>{
   if(drawing){ g.appendChild(drawing); figure.setPointerCapture?.(e.pointerId); }
 });
 
+/* 既有註解用 transform 位移 —— 不改原始座標，所以形狀完全不變形 */
+function getTranslate(node){
+  const m = /translate\(\s*(-?[\d.]+)[ ,]+(-?[\d.]+)\s*\)/.exec(node.getAttribute('transform')||'');
+  return m ? {x:+m[1], y:+m[2]} : {x:0, y:0};
+}
+
 paper.addEventListener('pointermove', e=>{
+  if(dragging && figure){
+    e.preventDefault();
+    const p = toSvg(figure, e);
+    const x = dragging.base.x + (p.x - dragging.start.x);
+    const y = dragging.base.y + (p.y - dragging.start.y);
+    dragging.node.setAttribute('transform', `translate(${x.toFixed(1)} ${y.toFixed(1)})`);
+    return;
+  }
   if(!drawing || !figure) return;
   e.preventDefault();
   const p = toSvg(figure, e);
@@ -637,6 +700,7 @@ paper.addEventListener('pointermove', e=>{
 });
 
 paper.addEventListener('pointerup', ()=>{
+  if(dragging){ dragging = null; touch(); return; }
   if(!drawing) return;
   // 不小心點一下就放開 → 丟掉空圖形
   const bb = drawing.getBBox ? drawing.getBBox() : null;
