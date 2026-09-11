@@ -1,4 +1,4 @@
-# flatnote
+# wripix
 
 A WYSIWYG HTML notebook. Your note is just a file — no backend, no database, no API.
 
@@ -42,12 +42,11 @@ HTML 同時是「資料」和「呈現」。筆記存出去以後，不需要這
 
 ## 關於名字
 
-這個專案原本取名叫 **wripix**（舊的部署還留在 `wripix.xyz`，repo 和 GitHub Pages
-的網址目前也還是 `wripix`）。
+這個專案從 2019 年起就叫 **wripix** —— write + pixel，寫字跟畫圖在同一張紙上，
+正好是這個編輯器在做的事（舊的部署還留在 `wripix.xyz`）。
 
-後來改叫 **flatnote**。「flat」在資料的世界裡指「沒有資料庫、沒有巢狀結構，
-就是一份攤平的檔案」，正好是這個專案的核心主張；同時它也是「平放的一張紙」。
-兩層意思番在一起，比 wripix 更能說明這個東西是什麼。
+中間一度想改名叫 flatnote，最後還是留在 wripix：repo、GitHub Pages 網址、
+以及認識這個專案的人記得的，都是這個名字。
 
 ---
 
