@@ -432,9 +432,9 @@ paper.addEventListener('paste', async e=>{
   if(html){
     const d = document.createElement('div');
     d.innerHTML = html;
+    sanitizeNode(d);
     d.querySelectorAll('*').forEach(n=>{
       n.removeAttribute('style'); n.removeAttribute('class'); n.removeAttribute('id');
-      if(/^(SCRIPT|STYLE|META|LINK)$/.test(n.tagName)) n.remove();
     });
     document.execCommand('insertHTML',false,d.innerHTML);
   }else{
@@ -931,6 +931,38 @@ paper.addEventListener('pointerup', ()=>{
 });
 
 /* ============================================================
+   清洗 —— 外來 HTML 與貼上的內容都要過這一關
+   標記只證明「這檔案是 wripix 寫的」，不證明內容安全：
+   使用者從網頁貼進來的 onerror 一樣會被我們存進自己的檔案裡。
+   ============================================================ */
+const BAD_TAGS = /^(SCRIPT|STYLE|IFRAME|OBJECT|EMBED|APPLET|BASE|META|LINK|FORM|INPUT|BUTTON|TEXTAREA|SELECT)$/;
+const URL_ATTRS = ['href','src','xlink:href','action','formaction'];
+
+function dangerousUrl(v){
+  const t = (v||'').replace(/[\s\x00-\x1f]/g,'').toLowerCase();
+  return t.startsWith('javascript:') || t.startsWith('vbscript:')
+      || (t.startsWith('data:') && !t.startsWith('data:image/'));
+}
+
+function sanitizeNode(root){
+  root.querySelectorAll('*').forEach(n=>{
+    if(BAD_TAGS.test(n.tagName.toUpperCase())){ n.remove(); return; }
+    [...n.attributes].forEach(a=>{
+      const name = a.name.toLowerCase();
+      if(name.startsWith('on')) n.removeAttribute(a.name);
+      else if(URL_ATTRS.includes(name) && dangerousUrl(a.value)) n.removeAttribute(a.name);
+    });
+  });
+  return root;
+}
+
+function sanitizeHtml(html){
+  const d = document.createElement('div');
+  d.innerHTML = html;
+  return sanitizeNode(d).innerHTML;
+}
+
+/* ============================================================
    存檔格式
    ============================================================ */
 const MARK_OPEN  = '<!--dahai-notebook v1-->';
@@ -994,15 +1026,24 @@ function escapeHtml(s){
   return s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 }
 
-/* 讀回來：認得自己存的檔，也盡量吃得下別人的 HTML */
+/* 讀回來：認得自己存的檔；認不出來的要使用者點頭才進得來
+   標記是 head 裡的一行註解，formatter 或「另存網頁」都可能弄丟它，
+   所以 <div id="note"> 也算數 —— 寧可放過，不要把使用者自己的筆記鎖在門外 */
 function parseDocument(text){
   const doc = new DOMParser().parseFromString(text,'text/html');
   const note = doc.getElementById('note');
   const style = doc.querySelector('meta[name="dahai-paper"]')?.content;
   return {
     html: note ? note.innerHTML : (doc.body ? doc.body.innerHTML : text),
-    paper: style || 'ruled'
+    paper: style || 'ruled',
+    foreign: !(text.includes(MARK_OPEN) || note)
   };
+}
+
+function confirmImport(name){
+  return confirm('「'+name+'」不是 wripix 存出來的筆記檔。\n\n'
+    + '仍要匯入嗎？匯入時會清掉腳本之類的內容，原本的樣式與排版不會保留。\n\n'
+    + '為了不動到原檔，匯入之後只能另存新檔。');
 }
 
 /* 讀進來的筆記沒有握把（存檔時拿掉了），補回去 */
@@ -1029,8 +1070,17 @@ function naturalWidth(f){
   return w ? `min(100%,${w}px)` : '100%';
 }
 
+/* 匯入的外來檔不綁定原檔：handle 留空，Ctrl+S 就會走另存新檔 */
+function adoptImported(o, name){
+  applyLoaded(o);
+  fileName = name; fnameEl.textContent = fileName + '（匯入）';
+  handle = null; lastSavedOnce = false;
+  setDirty(true);
+  flash('已匯入外部 HTML —— 儲存時會請你選新檔案，不會寫回原檔', 5000);
+}
+
 function applyLoaded(o){
-  paper.innerHTML = o.html.trim();
+  paper.innerHTML = sanitizeHtml(o.html.trim());
   ensureGrips();
   paperStyle = o.paper;
   paper.className = 'style-'+paperStyle;
@@ -1060,9 +1110,16 @@ async function openFile(){
       const [h] = await window.showOpenFilePicker({
         types:[{description:'筆記 (HTML)',accept:{'text/html':['.html','.htm']}}]
       });
-      handle = h;
       const f = await h.getFile();
-      applyLoaded(parseDocument(await f.text()));
+      const o = parseDocument(await f.text());
+      if(o.foreign){
+        if(!confirmImport(f.name)) return;
+        await forgetHandle();
+        adoptImported(o, f.name);
+        return;
+      }
+      handle = h;
+      applyLoaded(o);
       fileName = f.name; fnameEl.textContent = fileName;
       lastSavedOnce = true; setDirty(false);
       await rememberHandle(h);
@@ -1075,11 +1132,17 @@ async function openFile(){
 
 document.getElementById('filepicker').addEventListener('change', async e=>{
   const f = e.target.files[0]; if(!f) return;
-  applyLoaded(parseDocument(await f.text()));
+  e.target.value='';
+  const o = parseDocument(await f.text());
+  if(o.foreign){
+    if(!confirmImport(f.name)) return;
+    adoptImported(o, f.name);
+    return;
+  }
+  applyLoaded(o);
   fileName = f.name; fnameEl.textContent = fileName;
   lastSavedOnce = true; setDirty(false);
   flash('已開啟（此瀏覽器只能另存新檔）',4000);
-  e.target.value='';
 });
 
 async function save(forceNew){
@@ -1182,23 +1245,36 @@ async function loadLastHandle(){
     try{
       const perm = await h.queryPermission({mode:'readwrite'});
       if(perm==='granted'){
-        handle = h;
         const f = await h.getFile();
-        applyLoaded(parseDocument(await f.text()));
-        fileName=f.name; fnameEl.textContent=fileName;
-        lastSavedOnce=true; setDirty(false);
-        flash('已接續上次的檔案');
+        const o = parseDocument(await f.text());
+        if(o.foreign){
+          // 上次那個檔案在外面被換成別的東西了 —— 不要靜靜載入，也不要再綁著它
+          await forgetHandle();
+          flash('上次的檔案已不是 wripix 的筆記格式，沒有載入。要的話請用 📂 匯入。', 6000);
+        }else{
+          handle = h;
+          applyLoaded(o);
+          fileName=f.name; fnameEl.textContent=fileName;
+          lastSavedOnce=true; setDirty(false);
+          flash('已接續上次的檔案');
+        }
       }else{
         fnameEl.textContent = h.name + '（點 📂 重新授權）';
         document.getElementById('b-open').onclick = async ()=>{
           const p = await h.requestPermission({mode:'readwrite'});
           if(p==='granted'){
-            handle=h;
             const f=await h.getFile();
-            applyLoaded(parseDocument(await f.text()));
+            const o = parseDocument(await f.text());
+            document.getElementById('b-open').onclick = openFile;
+            if(o.foreign){
+              await forgetHandle();
+              flash('上次的檔案已不是 wripix 的筆記格式，沒有載入。', 6000);
+              return;
+            }
+            handle=h;
+            applyLoaded(o);
             fileName=f.name; fnameEl.textContent=fileName;
             lastSavedOnce=true; setDirty(false); flash('已接續上次的檔案');
-            document.getElementById('b-open').onclick = openFile;
           }else{ openFile(); }
         };
       }
