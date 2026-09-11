@@ -25,7 +25,7 @@
     font-family:-apple-system,"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;
   }
 
-  /* ---------- �紙 ---------- */
+  /* ---------- 稿紙 ---------- */
   #paperwrap{flex:1;overflow:auto;padding:24px 12px 60px;display:flex;justify-content:center}
   #paper{
     width:100%;
@@ -57,6 +57,33 @@
   }
   #paper:empty:before{content:attr(data-placeholder);color:#b8b0a8;font-style:italic}
   #paper img{max-width:100%;height:auto}
+
+  /* ---------- 圖片 / 註解 ---------- */
+  .fig{margin:8px 0;position:relative;line-height:0}
+  .fig svg{max-width:100%;height:auto;display:block;background:#fff}
+  .fig.active svg{outline:2px solid var(--accent);outline-offset:2px;cursor:crosshair}
+  .fig:not(.active):hover svg{outline:2px dashed #c9b0a0;outline-offset:2px;cursor:pointer}
+  .anno .sel{outline:none}
+  #annobar{
+    position:fixed;z-index:50;display:none;gap:2px;align-items:center;
+    background:var(--bar);border:1px solid #6a2a2a;border-radius:8px;
+    padding:5px 6px;box-shadow:0 6px 20px rgba(0,0,0,.45);
+    flex-wrap:wrap;max-width:min(94vw,560px);
+  }
+  #annobar.show{display:flex}
+  #annobar button{
+    background:transparent;border:1px solid transparent;color:var(--bar-fg);
+    font-size:15px;min-width:30px;height:28px;padding:0 6px;border-radius:5px;
+    cursor:pointer;font-family:inherit;line-height:1;
+  }
+  #annobar button:hover{background:#3d1111;border-color:#6a2a2a}
+  #annobar button.on{background:#5a2020;border-color:#8a3a3a}
+  #annobar .divider{width:1px;height:20px;background:#5a2020;margin:0 4px}
+  #annobar .sw{
+    width:20px;height:20px;border-radius:50%;border:2px solid #00000055;
+    cursor:pointer;padding:0;min-width:0;
+  }
+  #annobar .sw.on{border-color:#fff;transform:scale(1.15)}
   #paper h1{font-size:30px;line-height:64px;margin:32px 0}
   #paper h2{font-size:24px;line-height:32px;margin:32px 0}
   #paper h3{font-size:19px;line-height:32px;margin:32px 0}
@@ -191,6 +218,27 @@
   </div>
 </div>
 
+<div id="annobar">
+  <button data-tool="pen"     title="手繪筆">✎</button>
+  <button data-tool="arrow"   title="箭頭">↗</button>
+  <button data-tool="rect"    title="方框">▢</button>
+  <button data-tool="ellipse" title="橢圓">◯</button>
+  <button data-tool="text"    title="文字">A</button>
+  <span class="divider"></span>
+  <button class="sw" data-color="#e53935" style="background:#e53935" title="紅"></button>
+  <button class="sw" data-color="#fb8c00" style="background:#fb8c00" title="橘"></button>
+  <button class="sw" data-color="#1e88e5" style="background:#1e88e5" title="藍"></button>
+  <button class="sw" data-color="#43a047" style="background:#43a047" title="綠"></button>
+  <button class="sw" data-color="#111111" style="background:#111111" title="黑"></button>
+  <span class="divider"></span>
+  <button id="anno-thin"  title="細">·</button>
+  <button id="anno-thick" title="粗">●</button>
+  <span class="divider"></span>
+  <button id="anno-undo" title="復原上一筆">↶</button>
+  <button id="anno-clear" title="清空這張圖的註解">⌫</button>
+  <button id="anno-done" title="完成 (Esc)">✓</button>
+</div>
+
 <input type="file" id="filepicker" accept=".html,.htm" hidden>
 <input type="file" id="imgpicker" accept="image/*" hidden>
 
@@ -281,21 +329,35 @@ document.getElementById('imgpicker').addEventListener('change', async e=>{
   e.target.value='';
 });
 
-/* 圖片一律轉成 data URI 內嵌 —— 保證單檔可攜 */
+/* 圖片一律轉成 data URI，並包成 inline SVG —— 單檔可攜，且註解永遠可再編輯 */
 function insertImageFile(file){
   return new Promise(res=>{
     const r = new FileReader();
     r.onload = ()=>{
-      paper.focus();
-      document.execCommand('insertHTML',false,
-        `<img src="${r.result}" alt="${file.name.replace(/"/g,'')}">`);
-      touch();
-      if(file.size > 1.5*1024*1024)
-        flash('圖片較大，檔案會變肥（'+(file.size/1048576).toFixed(1)+'MB）',4000);
-      res();
+      const probe = new Image();
+      probe.onload = ()=>{
+        const w = probe.naturalWidth || 800, h = probe.naturalHeight || 600;
+        paper.focus();
+        document.execCommand('insertHTML', false, figureMarkup(r.result, w, h));
+        touch();
+        if(file.size > 1.5*1024*1024)
+          flash('圖片較大，檔案會變肥（'+(file.size/1048576).toFixed(1)+'MB）',4000);
+        res();
+      };
+      probe.onerror = ()=>res();
+      probe.src = r.result;
     };
     r.readAsDataURL(file);
   });
+}
+
+/* 一張「可註解的圖」：底圖與註解是同一棵 SVG 樹裡的兄弟節點 */
+function figureMarkup(dataUri, w, h){
+  return `<div class="fig" contenteditable="false">`
+    + `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">`
+    + `<image href="${dataUri}" x="0" y="0" width="${w}" height="${h}"></image>`
+    + `<g class="anno"></g>`
+    + `</svg></div><p><br></p>`;
 }
 
 /* 貼上：圖片內嵌，文字去掉外來樣式 */
@@ -338,11 +400,264 @@ function touch(){
 }
 
 /* ============================================================
+   SVG 註解層
+   底圖與註解同在一棵 SVG 樹裡 —— 存成 HTML 後仍是可再編輯的物件，
+   不是被壓平的像素。座標一律用圖片原始尺寸，所以縮放不會跑掉。
+   ============================================================ */
+const NS  = 'http://www.w3.org/2000/svg';
+const bar = document.getElementById('annobar');
+
+let figure   = null;      // 目前進入註解模式的 .fig
+let tool     = 'pen';
+let color    = '#e53935';
+let thick    = 1;         // 1 = 細, 2 = 粗
+let drawing  = null;      // 正在畫的元素
+let selected = null;      // 被選取的註解
+
+const svgOf  = f => f.querySelector('svg');
+const annoOf = f => f.querySelector('g.anno');
+
+/* 線寬跟著圖片尺寸走，小圖不會畫出粗到蓋住內容的線 */
+function strokeW(f){
+  const vb = svgOf(f).viewBox.baseVal;
+  const base = Math.max(2, Math.round(Math.min(vb.width, vb.height) / 180));
+  return base * (thick === 2 ? 2.2 : 1);
+}
+function toSvg(f, ev){
+  const svg = svgOf(f);
+  const pt = svg.createSVGPoint();
+  pt.x = ev.clientX; pt.y = ev.clientY;
+  return pt.matrixTransform(svg.getScreenCTM().inverse());
+}
+function el(name, attrs){
+  const n = document.createElementNS(NS, name);
+  for(const k in attrs) n.setAttribute(k, attrs[k]);
+  return n;
+}
+
+/* ---------- 進入 / 離開註解模式 ---------- */
+function enterFigure(f){
+  if(figure === f) return;
+  exitFigure();
+  figure = f;
+  f.classList.add('active');
+  bar.classList.add('show');
+  placeBar();
+  syncBar();
+}
+function exitFigure(){
+  if(!figure) return;
+  deselect();
+  figure.classList.remove('active');
+  figure = null;
+  bar.classList.remove('show');
+}
+function placeBar(){
+  if(!figure) return;
+  const r = figure.getBoundingClientRect();
+  const bw = bar.offsetWidth || 320, bh = bar.offsetHeight || 40;
+  let top = r.top - bh - 8;
+  if(top < 8) top = Math.min(r.bottom + 8, window.innerHeight - bh - 8);
+  let left = r.left + (r.width - bw)/2;
+  left = Math.max(8, Math.min(left, window.innerWidth - bw - 8));
+  bar.style.top = top + 'px';
+  bar.style.left = left + 'px';
+}
+window.addEventListener('scroll', placeBar, true);
+window.addEventListener('resize', placeBar);
+
+/* ---------- 工具列 ---------- */
+bar.querySelectorAll('button[data-tool]').forEach(b=>{
+  b.addEventListener('mousedown', e=>e.preventDefault());
+  b.addEventListener('click', ()=>{ tool = b.dataset.tool; syncBar(); });
+});
+bar.querySelectorAll('button.sw').forEach(b=>{
+  b.addEventListener('mousedown', e=>e.preventDefault());
+  b.addEventListener('click', ()=>{
+    color = b.dataset.color;
+    if(selected) recolor(selected, color);
+    syncBar();
+  });
+});
+document.getElementById('anno-thin').onclick  = ()=>{ thick = 1; syncBar(); };
+document.getElementById('anno-thick').onclick = ()=>{ thick = 2; syncBar(); };
+document.getElementById('anno-undo').onclick  = ()=>{
+  if(!figure) return;
+  const g = annoOf(figure);
+  if(g.lastElementChild){ g.lastElementChild.remove(); touch(); }
+};
+document.getElementById('anno-clear').onclick = ()=>{
+  if(!figure) return;
+  if(!annoOf(figure).children.length) return;
+  if(!confirm('清空這張圖上的所有註解？')) return;
+  annoOf(figure).innerHTML = ''; touch();
+};
+document.getElementById('anno-done').onclick  = exitFigure;
+
+function syncBar(){
+  bar.querySelectorAll('button[data-tool]').forEach(b=>
+    b.classList.toggle('on', b.dataset.tool === tool));
+  bar.querySelectorAll('button.sw').forEach(b=>
+    b.classList.toggle('on', b.dataset.color === color));
+  document.getElementById('anno-thin').classList.toggle('on', thick === 1);
+  document.getElementById('anno-thick').classList.toggle('on', thick === 2);
+}
+function recolor(node, c){
+  const targets = node.tagName === 'g' ? [...node.children] : [node];
+  targets.forEach(n=>{
+    if(n.getAttribute('fill') && n.getAttribute('fill') !== 'none') n.setAttribute('fill', c);
+    if(n.getAttribute('stroke')) n.setAttribute('stroke', c);
+  });
+  touch();
+}
+
+/* ---------- 選取 / 刪除 ---------- */
+function select(node){
+  deselect();
+  selected = node;
+  node.setAttribute('data-sel','1');
+  node.style.filter = 'drop-shadow(0 0 3px #fff) drop-shadow(0 0 6px #000)';
+}
+function deselect(){
+  if(!selected) return;
+  selected.removeAttribute('data-sel');
+  selected.style.filter = '';
+  selected = null;
+}
+document.addEventListener('keydown', e=>{
+  if(e.key === 'Escape'){ exitFigure(); return; }
+  if((e.key === 'Delete' || e.key === 'Backspace') && selected){
+    e.preventDefault();
+    selected.remove(); selected = null; touch();
+  }
+});
+
+/* ---------- 點圖片：進入註解模式（舊的 <img> 也會自動升級） ---------- */
+paper.addEventListener('click', e=>{
+  const fig = e.target.closest('.fig');
+  if(fig){ enterFigure(fig); return; }
+
+  const img = e.target.closest('img');
+  if(img){ upgradeImg(img); return; }
+
+  exitFigure();
+});
+
+/* 把舊筆記裡的普通 <img> 換成可註解的 SVG 圖框 */
+function upgradeImg(img){
+  const w = img.naturalWidth || 800, h = img.naturalHeight || 600;
+  const tmp = document.createElement('div');
+  tmp.innerHTML = figureMarkup(img.getAttribute('src'), w, h);
+  const fig = tmp.querySelector('.fig');
+  img.replaceWith(fig);
+  touch();
+  enterFigure(fig);
+  flash('這張圖已可註解');
+}
+
+/* ---------- 畫 ---------- */
+paper.addEventListener('pointerdown', e=>{
+  if(!figure) return;
+  const fig = e.target.closest('.fig');
+  if(fig !== figure) return;
+
+  // 點到既有註解 → 選取它，不畫新的
+  const hit = e.target.closest('g.anno > *');
+  if(hit){ select(hit); return; }
+  deselect();
+
+  const p = toSvg(figure, e);
+  const g = annoOf(figure);
+  const sw = strokeW(figure);
+  const common = {stroke:color, fill:'none', 'stroke-width':sw,
+                  'stroke-linecap':'round', 'stroke-linejoin':'round'};
+
+  if(tool === 'text'){
+    const t = prompt('標註文字：');
+    if(t){
+      const size = Math.max(12, Math.round(svgOf(figure).viewBox.baseVal.height / 22));
+      const node = el('text', {x:p.x, y:p.y, fill:color, 'font-size':size,
+        'font-family':'sans-serif', 'font-weight':'600',
+        stroke:'#fff', 'stroke-width':size/8, 'paint-order':'stroke'});
+      node.textContent = t;
+      g.appendChild(node);
+      touch();
+    }
+    return;
+  }
+
+  e.preventDefault();
+  if(tool === 'pen'){
+    drawing = el('path', {...common, d:`M ${p.x} ${p.y}`});
+  }else if(tool === 'arrow'){
+    drawing = el('g', {});
+    drawing.appendChild(el('line', {...common, x1:p.x, y1:p.y, x2:p.x, y2:p.y}));
+    drawing.appendChild(el('polygon', {fill:color, stroke:'none', points:''}));
+    drawing.dataset.x1 = p.x; drawing.dataset.y1 = p.y;
+  }else if(tool === 'rect'){
+    drawing = el('rect', {...common, x:p.x, y:p.y, width:0, height:0});
+    drawing.dataset.x1 = p.x; drawing.dataset.y1 = p.y;
+  }else if(tool === 'ellipse'){
+    drawing = el('ellipse', {...common, cx:p.x, cy:p.y, rx:0, ry:0});
+    drawing.dataset.x1 = p.x; drawing.dataset.y1 = p.y;
+  }
+  if(drawing){ g.appendChild(drawing); figure.setPointerCapture?.(e.pointerId); }
+});
+
+paper.addEventListener('pointermove', e=>{
+  if(!drawing || !figure) return;
+  e.preventDefault();
+  const p = toSvg(figure, e);
+  const x1 = +drawing.dataset.x1, y1 = +drawing.dataset.y1;
+
+  if(drawing.tagName === 'path'){
+    drawing.setAttribute('d', drawing.getAttribute('d') + ` L ${p.x} ${p.y}`);
+  }else if(drawing.tagName === 'g'){          // 箭頭
+    const line = drawing.firstChild, head = drawing.lastChild;
+    line.setAttribute('x2', p.x); line.setAttribute('y2', p.y);
+    const sw = +line.getAttribute('stroke-width');
+    const ang = Math.atan2(p.y - y1, p.x - x1);
+    const L = sw * 4.5, W = sw * 2.2;
+    const bx = p.x - Math.cos(ang)*L, by = p.y - Math.sin(ang)*L;
+    head.setAttribute('points',
+      `${p.x},${p.y} ${bx - Math.sin(ang)*W},${by + Math.cos(ang)*W} ${bx + Math.sin(ang)*W},${by - Math.cos(ang)*W}`);
+    // 線縮短一點，免得從箭頭尖端戳出來
+    line.setAttribute('x2', bx); line.setAttribute('y2', by);
+  }else if(drawing.tagName === 'rect'){
+    drawing.setAttribute('x', Math.min(x1, p.x));
+    drawing.setAttribute('y', Math.min(y1, p.y));
+    drawing.setAttribute('width',  Math.abs(p.x - x1));
+    drawing.setAttribute('height', Math.abs(p.y - y1));
+  }else if(drawing.tagName === 'ellipse'){
+    drawing.setAttribute('cx', (x1 + p.x)/2);
+    drawing.setAttribute('cy', (y1 + p.y)/2);
+    drawing.setAttribute('rx', Math.abs(p.x - x1)/2);
+    drawing.setAttribute('ry', Math.abs(p.y - y1)/2);
+  }
+});
+
+paper.addEventListener('pointerup', ()=>{
+  if(!drawing) return;
+  // 不小心點一下就放開 → 丟掉空圖形
+  const bb = drawing.getBBox ? drawing.getBBox() : null;
+  if(bb && bb.width < 2 && bb.height < 2) drawing.remove();
+  [...annoOf(figure).children].forEach(n=>{ delete n.dataset.x1; delete n.dataset.y1; });
+  drawing = null;
+  touch();
+});
+
+/* ============================================================
    存檔格式
    ============================================================ */
 const MARK_OPEN  = '<!--dahai-notebook v1-->';
 
 function buildDocument(){
+  // 存出去前把「選取中」的視覺效果清掉，檔案裡不留編輯器的暫時狀態
+  const body = paper.cloneNode(true);
+  body.querySelectorAll('[data-sel]').forEach(n=>{
+    n.removeAttribute('data-sel'); n.removeAttribute('style');
+  });
+  const inner = body.innerHTML;
   return `<!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
@@ -366,12 +681,14 @@ body{margin:0;background:#e8e6e0;font-family:-apple-system,"Noto Sans TC","PingF
 #note a{color:#0b6bbf}
 #note table{border-collapse:collapse}
 #note td,#note th{border:1px solid #ccc;padding:4px 8px}
+#note .fig{margin:8px 0;line-height:0}
+#note .fig svg{max-width:100%;height:auto;display:block;background:#fff}
 @media(max-width:640px){#note{padding:24px 18px 60px 34px}}
 </style>
 </head>
 <body>
 <div id="note">
-${paper.innerHTML}
+${inner}
 </div>
 </body>
 </html>`;
