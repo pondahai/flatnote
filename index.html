@@ -64,6 +64,33 @@
   .fig.active svg{outline:2px solid var(--accent);outline-offset:2px;cursor:crosshair}
   .fig:not(.active):hover svg{outline:2px dashed #c9b0a0;outline-offset:2px;cursor:pointer}
   .fig.active .anno > *{cursor:move}
+
+  /* 拖曳整張圖用的握把 */
+  .fig .grip{
+    position:absolute;top:0;left:-28px;width:24px;height:28px;
+    display:none;align-items:center;justify-content:center;
+    color:#a87a5a;cursor:grab;font-size:16px;line-height:1;
+    border-radius:5px;background:rgba(0,0,0,.04);
+    user-select:none;touch-action:none;
+  }
+  .fig:hover .grip,.fig.active .grip{display:flex}
+  .fig .grip:active{cursor:grabbing;background:rgba(0,0,0,.12)}
+  .fig .rsz{
+    position:absolute;right:-5px;bottom:-5px;width:14px;height:14px;
+    background:var(--accent);border:2px solid #fff;border-radius:3px;
+    box-shadow:0 1px 4px rgba(0,0,0,.4);
+    cursor:nwse-resize;display:none;touch-action:none;
+  }
+  .fig:hover .rsz,.fig.active .rsz{display:block}
+  .fig.resizing{user-select:none}
+  .fig.center{margin-left:auto;margin-right:auto}
+  .fig.dragging{opacity:.4}
+  #dropline{
+    position:fixed;height:3px;border-radius:2px;background:var(--accent);
+    box-shadow:0 0 8px rgba(255,155,61,.75);display:none;z-index:60;pointer-events:none;
+  }
+  #dropline.show{display:block}
+  @media (max-width:640px){ .fig .grip{left:-26px;background:rgba(0,0,0,.08)} }
   #annobar{
     position:fixed;z-index:50;display:none;gap:2px;align-items:center;
     background:var(--bar);border:1px solid #6a2a2a;border-radius:8px;
@@ -218,6 +245,8 @@
   </div>
 </div>
 
+<div id="dropline"></div>
+
 <div id="annobar">
   <button data-tool="pen"     title="手繪筆">✎</button>
   <button data-tool="arrow"   title="箭頭">↗</button>
@@ -234,9 +263,7 @@
   <button id="anno-thin"  title="細">·</button>
   <button id="anno-thick" title="粗">●</button>
   <span class="divider"></span>
-  <button id="fig-up"   title="這張圖往前移">↑</button>
-  <button id="fig-down" title="這張圖往後移">↓</button>
-  <button id="fig-size" title="圖片大小">⤢</button>
+  <button id="fig-align" title="靠左 / 置中">⇔</button>
   <span class="divider"></span>
   <button id="anno-undo" title="復原上一筆">↶</button>
   <button id="anno-clear" title="清空這張圖的註解">⌫</button>
@@ -358,6 +385,8 @@ function insertImageFile(file){
 /* 一張「可註解的圖」：底圖與註解是同一棵 SVG 樹裡的兄弟節點 */
 function figureMarkup(dataUri, w, h){
   return `<div class="fig" contenteditable="false">`
+    + `<span class="grip" title="拖曳移動這張圖">⠿</span>`
+    + `<span class="rsz" title="拖曳改變大小"></span>`
     + `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">`
     + `<image href="${dataUri}" x="0" y="0" width="${w}" height="${h}"></image>`
     + `<g class="anno"></g>`
@@ -500,29 +529,24 @@ document.getElementById('anno-clear').onclick = ()=>{
 document.getElementById('anno-done').onclick  = exitFigure;
 
 /* ---------- 圖片在文件中的位置與大小 ---------- */
-document.getElementById('fig-up').onclick   = ()=>moveFigure(-1);
-document.getElementById('fig-down').onclick = ()=>moveFigure(1);
-document.getElementById('fig-size').onclick = ()=>cycleSize();
-
-function moveFigure(dir){
+document.getElementById('fig-align').onclick = ()=>{
   if(!figure) return;
-  const sib = dir < 0 ? figure.previousElementSibling : figure.nextElementSibling;
-  if(!sib){ flash(dir < 0 ? '已經在最前面' : '已經在最後面'); return; }
-  if(dir < 0) figure.parentNode.insertBefore(figure, sib);
-  else        figure.parentNode.insertBefore(sib, figure);
-  figure.scrollIntoView({block:'nearest'});
+  figure.classList.toggle('center');
+  flash(figure.classList.contains('center') ? '置中' : '靠左');
   touch(); placeBar();
-}
+};
 
-const SIZES = ['100%','75%','50%','35%'];
-function cycleSize(){
-  if(!figure) return;
-  const now = figure.style.width || '100%';
-  const next = SIZES[(SIZES.indexOf(now) + 1) % SIZES.length];
-  figure.style.width = next;
-  flash('圖片寬度 ' + next);
+/* 雙擊圖片 → 回復原尺寸與原比例 */
+paper.addEventListener('dblclick', e=>{
+  const f = e.target.closest('.fig');
+  if(!f || e.target.closest('g.anno')) return;
+  f.style.width = '';
+  const svg = svgOf(f);
+  svg.removeAttribute('preserveAspectRatio');
+  svg.style.aspectRatio = '';
+  flash('已回復原尺寸');
   touch(); placeBar();
-}
+});
 
 function syncBar(){
   bar.querySelectorAll('button[data-tool]').forEach(b=>
@@ -555,7 +579,10 @@ function deselect(){
   selected = null;
 }
 document.addEventListener('keydown', e=>{
-  if(e.key === 'Escape'){ exitFigure(); return; }
+  if(e.key === 'Escape'){
+    if(figDrag){ endFigDrag(false); return; }   // 拖到一半反悔
+    exitFigure(); return;
+  }
   if((e.key === 'Delete' || e.key === 'Backspace') && selected){
     e.preventDefault();
     selected.remove(); selected = null; touch();
@@ -600,7 +627,93 @@ function upgradeImg(img){
 }
 
 /* ---------- 畫 ---------- */
+/* ============================================================
+   把整張圖拖到文件的別處
+   拖曳時顯示一條落點線，靠近上下邊緣會自動捲動
+   ============================================================ */
+const dropline = document.getElementById('dropline');
+const wrap     = document.getElementById('paperwrap');
+let figDrag = null;
+let scrollSpeed = 0, scrollRAF = null;
+
+function blocksExcept(f){
+  return [...paper.children].filter(n => n !== f && n.nodeType === 1);
+}
+function dropTargetAt(y){
+  const kids = blocksExcept(figDrag.fig);
+  let last = null;
+  for(const n of kids){
+    const r = n.getBoundingClientRect();
+    if(y < r.top + r.height/2) return {node:n, before:true};
+    last = {node:n, before:false};
+  }
+  return last;
+}
+function showDrop(t){
+  if(!t){ dropline.classList.remove('show'); return; }
+  const r  = t.node.getBoundingClientRect();
+  const pr = paper.getBoundingClientRect();
+  const wr = wrap.getBoundingClientRect();
+  const y  = t.before ? r.top - 2 : r.bottom - 1;
+  if(y < wr.top || y > wr.bottom){ dropline.classList.remove('show'); return; }
+  dropline.style.left  = pr.left + 'px';
+  dropline.style.width = pr.width + 'px';
+  dropline.style.top   = y + 'px';
+  dropline.classList.add('show');
+}
+function autoScroll(){
+  if(!figDrag || !scrollSpeed){ scrollRAF = null; return; }
+  wrap.scrollTop += scrollSpeed;
+  if(figDrag.lastY != null){
+    figDrag.target = dropTargetAt(figDrag.lastY);
+    showDrop(figDrag.target);
+  }
+  scrollRAF = requestAnimationFrame(autoScroll);
+}
+function endFigDrag(commit){
+  if(!figDrag) return;
+  const {fig, target} = figDrag;
+  fig.classList.remove('dragging');
+  dropline.classList.remove('show');
+  scrollSpeed = 0;
+  if(commit && target){
+    if(target.before) paper.insertBefore(fig, target.node);
+    else              paper.insertBefore(fig, target.node.nextSibling);
+    touch();
+  }
+  figDrag = null;
+  placeBar();
+}
+
+let figResize = null;
+
 paper.addEventListener('pointerdown', e=>{
+  const rsz = e.target.closest('.rsz');
+  if(rsz){
+    e.preventDefault();
+    const f  = rsz.closest('.fig');
+    const cs = getComputedStyle(paper);
+    const r  = f.getBoundingClientRect();
+    f.classList.add('resizing');
+    figResize = {
+      fig:f, startX:e.clientX, startY:e.clientY,
+      startW:r.width, startH:r.height,
+      full: paper.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)
+    };
+    try{ paper.setPointerCapture(e.pointerId); }catch(_){}
+    return;
+  }
+
+  const grip = e.target.closest('.grip');
+  if(grip){
+    e.preventDefault();
+    const f = grip.closest('.fig');
+    figDrag = {fig:f, target:null, lastY:null};
+    f.classList.add('dragging');
+    try{ paper.setPointerCapture(e.pointerId); }catch(_){}
+    return;
+  }
+
   if(!figure) return;
   const fig = e.target.closest('.fig');
   if(fig !== figure) return;
@@ -660,6 +773,36 @@ function getTranslate(node){
 }
 
 paper.addEventListener('pointermove', e=>{
+  if(figResize){
+    e.preventDefault();
+    const full = figResize.full;
+    const f = figResize.fig, svg = svgOf(f);
+    let w = Math.max(60, Math.min(figResize.startW + (e.clientX - figResize.startX), full));
+    f.style.width = Math.round(w / full * 100) + '%';
+    if(e.shiftKey){
+      // 按住 Shift 自由變形：底圖與註解在同一棵 SVG 裡，會一起拉，標記不會離開它指的位置
+      const h = Math.max(40, figResize.startH + (e.clientY - figResize.startY));
+      svg.setAttribute('preserveAspectRatio','none');
+      svg.style.aspectRatio = (w / h).toFixed(4);
+    }else{
+      svg.removeAttribute('preserveAspectRatio');
+      svg.style.aspectRatio = '';
+    }
+    placeBar();
+    return;
+  }
+  if(figDrag){
+    e.preventDefault();
+    figDrag.lastY = e.clientY;
+    figDrag.target = dropTargetAt(e.clientY);
+    showDrop(figDrag.target);
+    const wr = wrap.getBoundingClientRect(), EDGE = 70;
+    if(e.clientY < wr.top + EDGE)         scrollSpeed = -Math.ceil((wr.top + EDGE - e.clientY)/5);
+    else if(e.clientY > wr.bottom - EDGE) scrollSpeed =  Math.ceil((e.clientY - wr.bottom + EDGE)/5);
+    else                                  scrollSpeed = 0;
+    if(scrollSpeed && !scrollRAF) scrollRAF = requestAnimationFrame(autoScroll);
+    return;
+  }
   if(dragging && figure){
     e.preventDefault();
     const p = toSvg(figure, e);
@@ -700,6 +843,12 @@ paper.addEventListener('pointermove', e=>{
 });
 
 paper.addEventListener('pointerup', ()=>{
+  if(figResize){
+    figResize.fig.classList.remove('resizing');
+    flash('圖片寬度 ' + (figResize.fig.style.width||'100%'));
+    figResize = null; touch(); return;
+  }
+  if(figDrag){ endFigDrag(true); return; }
   if(dragging){ dragging = null; touch(); return; }
   if(!drawing) return;
   // 不小心點一下就放開 → 丟掉空圖形
@@ -721,6 +870,8 @@ function buildDocument(){
   body.querySelectorAll('[data-sel]').forEach(n=>{
     n.removeAttribute('data-sel'); n.removeAttribute('style');
   });
+  body.querySelectorAll('.grip,.rsz').forEach(n=>n.remove());   // 握把是編輯器的，不是筆記的
+  body.querySelectorAll('.fig').forEach(n=>n.classList.remove('active','dragging'));
   const inner = body.innerHTML;
   return `<!DOCTYPE html>
 <html lang="zh-Hant">
@@ -747,6 +898,7 @@ body{margin:0;background:#e8e6e0;font-family:-apple-system,"Noto Sans TC","PingF
 #note td,#note th{border:1px solid #ccc;padding:4px 8px}
 #note .fig{margin:8px 0;line-height:0}
 #note .fig svg{max-width:100%;height:auto;display:block;background:#fff}
+#note .fig.center{margin-left:auto;margin-right:auto}
 @media(max-width:640px){#note{padding:24px 18px 60px 34px}}
 </style>
 </head>
@@ -773,8 +925,25 @@ function parseDocument(text){
   };
 }
 
+/* 讀進來的筆記沒有握把（存檔時拿掉了），補回去 */
+function ensureGrips(){
+  paper.querySelectorAll('.fig').forEach(f=>{
+    if(f.querySelector('.grip')) return;
+    const g = document.createElement('span');
+    g.className = 'grip'; g.title = '拖曳移動這張圖'; g.textContent = '⠿';
+    f.insertBefore(g, f.firstChild);
+  });
+  paper.querySelectorAll('.fig').forEach(f=>{
+    if(f.querySelector('.rsz')) return;
+    const s = document.createElement('span');
+    s.className = 'rsz'; s.title = '拖曳改變大小';
+    f.appendChild(s);
+  });
+}
+
 function applyLoaded(o){
   paper.innerHTML = o.html.trim();
+  ensureGrips();
   paperStyle = o.paper;
   paper.className = 'style-'+paperStyle;
   document.querySelectorAll('button.t[data-paper]').forEach(x=>
