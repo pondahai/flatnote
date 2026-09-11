@@ -92,20 +92,6 @@
   }
   #dropline.show{display:block}
   @media (max-width:640px){ .fig .grip{left:-26px;background:rgba(0,0,0,.08)} }
-
-  /* 列印：只留稿紙的內容，工具列與控制項都不上紙 */
-  @media print{
-    body{background:#fff;display:block;height:auto}
-    #bar,#annobar,#dropline,#warn,.fig .grip,.fig .rsz{display:none !important}
-    #paperwrap{display:block;overflow:visible;padding:0;height:auto}
-    #paper{
-      max-width:none;width:auto;min-height:0;padding:0;
-      box-shadow:none;background:#fff;background-image:none;
-      font-size:12pt;line-height:1.6;
-    }
-    #paper .fig{break-inside:avoid;page-break-inside:avoid}
-    #paper h1,#paper h2,#paper h3{break-after:avoid;page-break-after:avoid}
-  }
   #annobar{
     position:fixed;z-index:50;display:none;gap:2px;align-items:center;
     background:var(--bar);border:1px solid #6a2a2a;border-radius:8px;
@@ -182,6 +168,9 @@
   #dot{width:7px;height:7px;border-radius:50%;background:#6a5a5a;flex:none}
   #dot.dirty{background:var(--accent)}
   #dot.saved{background:#4caf50}
+  #state{font-weight:600}
+  #state.dirty{color:var(--accent)}
+  #state.saved{color:#7cc47f}
 
   #warn{
     background:#4a2a00;color:#ffd9a0;font-size:13px;padding:8px 12px;
@@ -256,7 +245,7 @@
   </div>
 
   <div id="status">
-    <span id="dot"></span><span id="fname">未命名</span><span id="msg"></span>
+    <span id="dot"></span><span id="fname">未命名</span><span id="state"></span><span id="msg"></span>
   </div>
 </div>
 
@@ -303,12 +292,15 @@ let handle    = null;      // FileSystemFileHandle
 let fileName  = '未命名';
 let dirty     = false;
 let paperStyle= 'ruled';
-let autosaveTimer = null;
 
 /* ---------- 狀態列 ---------- */
 function setDirty(v){
   dirty = v;
-  dot.className = v ? 'dirty' : (handle||lastSavedOnce ? 'saved' : '');
+  const saved = handle || lastSavedOnce;
+  dot.className = v ? 'dirty' : (saved ? 'saved' : '');
+  const st = document.getElementById('state');
+  st.className = v ? 'dirty' : (saved ? 'saved' : '');
+  st.textContent = v ? '未儲存' : (saved ? '已儲存' : '');
 }
 let lastSavedOnce = false;
 function flash(t,ms=2200){
@@ -445,7 +437,6 @@ paper.addEventListener('drop', async e=>{
 paper.addEventListener('input', touch);
 function touch(){
   setDirty(true);
-  scheduleAutosave();
 }
 
 /* ============================================================
@@ -932,14 +923,6 @@ body{margin:0;background:#e8e6e0;font-family:-apple-system,"Noto Sans TC","PingF
 #note .fig.center,#note .fig.align-center{margin-left:auto;margin-right:auto}
 #note .fig.align-right{margin-left:auto;margin-right:0}
 @media(max-width:640px){#note{padding:24px 18px 60px 34px}}
-@media print{
-  body{background:#fff}
-  /* min-height:100vh 是給螢幕看的，列印時會多撐出一整張紙 */
-  #note{max-width:none;min-height:0;margin:0;padding:0;box-shadow:none;background:#fff}
-  #note .fig{break-inside:avoid;page-break-inside:avoid}
-  #note h1,#note h2,#note h3{break-after:avoid;page-break-after:avoid}
-  #note a{color:#000}
-}
 </style>
 </head>
 <body>
@@ -1088,13 +1071,6 @@ function suggestName(){
 document.addEventListener('keydown', e=>{
   if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='s'){ e.preventDefault(); save(false); }
 });
-
-/* 自動存檔：已經有檔案代號時，停筆 2 秒後靜靜寫回去 */
-function scheduleAutosave(){
-  if(!HAS_FS || !handle) return;
-  clearTimeout(autosaveTimer);
-  autosaveTimer = setTimeout(()=>{ if(dirty) save(false); }, 2000);
-}
 
 window.addEventListener('beforeunload', e=>{
   if(dirty){ e.preventDefault(); e.returnValue=''; }
